@@ -1,0 +1,101 @@
+# Импорт библиотек
+import pandas as pd
+import os
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy.stats import norm 
+from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import cross_val_score, train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.tree import DecisionTreeClassifier
+import warnings
+warnings.filterwarnings('ignore')
+
+!pip install imbalanced-learn
+import imblearn
+from imblearn.over_sampling import SMOTE
+
+# Загрузка данных
+df = pd.read_csv('winequalityN.csv')
+
+# Анализ данных
+df.head()
+df.describe()
+df.info()
+
+# null, %
+round(100*df.isna().sum()/df.shape[0],2)
+print(f'Дубликатов - {round(100*(df[df.duplicated].shape[0]/df.shape[0]),0)} %')
+
+# Распределение по типам и качеству
+plt.figure(figsize=(2,2))
+fig, axs = plt.subplots(ncols=2)
+sns.countplot(x='type', hue='type', data=df, palette= ['green','blue'], ax=axs[0])
+sns.countplot(x='quality', hue='quality', data=df, ax=axs[1])
+
+# Визуальная оценка распределения данных
+plt.figure(figsize = (20,22))
+for i in range(1,13):
+    plt.subplot(5,4,i)
+    sns.distplot(df[df.columns[i]], fit=norm)
+
+# Оценка выбросов
+plt.figure(figsize = (20,22))
+for i in range(1,13):
+    plt.subplot(5,4,i)
+    sns.boxplot(df[df.columns[i]]).set_title(df.columns[i])
+
+# Поготовка данных
+# заполнение null
+df['fixed acidity'].fillna(df['fixed acidity'].mean(), inplace = True)
+df['volatile acidity'].fillna(df['volatile acidity'].mean(), inplace = True)
+df['pH'].fillna(df['pH'].mean(), inplace = True)
+df['sulphates'].fillna(df['sulphates'].mean(), inplace = True)
+df['citric acid'].fillna(df['citric acid'].mean(), inplace = True)
+df['residual sugar'].fillna(df['residual sugar'].mean(), inplace = True)
+df['chlorides'].fillna(df['chlorides'].mean(), inplace = True)
+
+df.isna().sum()
+
+# удаление дубликатов
+df.drop_duplicates(inplace = True)
+
+# синтетические данные для устранения дисбаланса
+oversample = SMOTE()
+X, y = oversample.fit_resample(df.drop(columns = 'type'), df['type'])
+
+y.value_counts()
+sns.countplot(x=y, hue=y, data=X, palette= ['green','blue'])
+
+# Перевод категриальных переменных
+le = LabelEncoder()
+y = le.fit_transform(y)
+
+# Модели
+X_train,X_test,y_train,y_test = train_test_split(X, y,test_size=0.2, random_state=42)
+
+lr =  LogisticRegression()
+dt =  DecisionTreeClassifier()
+rf = RandomForestClassifier()
+
+lr.fit(X_train,y_train)
+dt.fit(X_train,y_train)
+rf.fit(X_train,y_train)
+
+lr_cv = cross_val_score(lr, X, y, cv=5)
+dt_cv = cross_val_score(dt, X, y, cv=5)
+rf_cv = cross_val_score(rf, X, y, cv=5)
+
+res = pd.DataFrame({'score':[lr.score(X_test,y_test), dt.score(X_test,y_test), rf.score(X_test,y_test)],
+                    'cv_score': [lr_cv.mean(), dt_cv.mean(), rf_cv.mean()]}, index = ['lr', 'dt', 'rf'])
+
+fi_dt = pd.DataFrame({'feature':X.columns, 'feature_importances':dt.feature_importances_})
+fi_rf = pd.DataFrame({'feature':X.columns, 'feature_importances':rf.feature_importances_})
+fi_lr = pd.DataFrame({'feature':lr.feature_names_in_, 'feature_importances':lr.coef_[0]})
+
+fig, axs = plt.subplots(1, 3, figsize=(20, 5), sharey=True)
+sns.barplot(data=fi_dt, y='feature', x='feature_importances', ax=axs[0])
+sns.barplot(data=fi_rf, y='feature', x='feature_importances', ax=axs[1])
+sns.barplot(data=fi_lr, y='feature', x='feature_importances', ax=axs[2])
+plt.show();
